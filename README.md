@@ -29,8 +29,8 @@
  
  <br>
  
- > *"Built this because I refused to accept that a $200 pro controller*
- > *should feel like a $20 gamepad just because it's in another room."*
+ > *"Built this because I refused to accept that a pro controller*
+ > *should feel like a $20 gamepad just because it's in another room or over network."*
  
  <br>
  
