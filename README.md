@@ -9,7 +9,6 @@ Adaptive triggers, HD haptics, gyro, and touchpad — all working natively over 
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20SteamOS-lightgrey?style=for-the-badge&logo=steam)](https://store.steampowered.com/steamdeck)
 [![Maintained](https://img.shields.io/badge/Maintained-Yes-green?style=for-the-badge)](https://github.com/AarveeGill/Phantom-Sense/commits/main)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen?style=for-the-badge)](https://github.com/AarveeGill/Phantom-Sense/pulls)
-[![Stars](https://img.shields.io/github/stars/AarveeGill/Phantom-Sense?style=for-the-badge)](https://github.com/AarveeGill/Phantom-Sense/stargazers)
 
 </div>
 
