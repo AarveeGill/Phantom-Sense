@@ -1,47 +1,63 @@
-# Contributing to PhantomSense
- 
- Thanks for considering a contribution. PhantomSense started as a personal project to solve a real problem, and community input makes it better for everyone.
- 
- ## Ways to Contribute
- 
- **Bug reports** — If something in the guide does not work as described, open an issue using the Bug Report template. Include your hardware, OS versions, and the exact step where things went wrong.
- 
- **Game compatibility reports** — Tested a game with DualSense features via PhantomSense? Open an issue using the Game Report template. This data helps build the compatibility matrix.
- 
- **Documentation improvements** — Found a typo, unclear instruction, or missing detail? Submit a pull request or open an issue describing the problem.
- 
- **Scripts and automation** — Have an idea to simplify the setup? Scripts that reduce manual steps are welcome.
- 
- **Network configurations** — Running a non-standard topology (VLANs, Tailscale, WireGuard, double NAT)? Document what worked and what didn't.
- 
- **Translations** — Want to translate the guide into another language? Open an issue to coordinate.
- 
- ## How to Submit a Pull Request
- 
- 1. Fork this repository
- 2. Create a new branch: `git checkout -b your-branch-name`
- 3. Make your changes
- 4. Commit with a clear message: `git commit -m "Fix typo in Phase 3 instructions"`
- 5. Push to your fork: `git push origin your-branch-name`
- 6. Open a pull request from your fork to this repo's `main` branch
- 
- If you are new to pull requests, GitHub has a guide: https://docs.github.com/en/pull-requests
- 
- ## Reporting Bugs
- 
- Use the Bug Report issue template. Include:
- - Your PC operating system and version
- - SteamOS version
- - VirtualHere version
- - DSX version
- - Controller model (DualSense Edge or Standard DualSense)
- - Network setup (WiFi, Ethernet, Tailscale)
- - Exact steps to reproduce the issue
- 
- ## Code of Conduct
- 
- Be respectful. This is a community of tinkerers helping each other. Harassment, insults, and bad-faith behavior will not be tolerated. Keep discussions constructive and focused on solving problems.
- 
- ## Questions
- 
- If you are unsure whether something is a bug or you just need help, use the Discussions tab instead of opening an issue. The Setup Help category is the right place.
+# Contributing to Phantom Sense
+
+Thanks for your interest. Phantom Sense is a small project and contributions of any size are welcome — from fixing a typo to adding a new feature.
+
+## Reporting Bugs
+
+Open an [issue](https://github.com/AarveeGill/Phantom-Sense/issues) and include:
+
+- What you were doing (e.g. running the Deck installer, forwarding the DualSense).
+- What you expected to happen.
+- What actually happened (error messages, exit codes, screenshots if relevant).
+- Your setup — SteamOS version, Windows version, network config (single/multi router, Tailscale).
+
+Logs help. On the Deck: `sudo journalctl -u Phantom Sense --no-pager -n 50`. On Windows: copy the terminal output from the .bat installer.
+
+## Suggesting Features
+
+Open an issue with the label `enhancement`. Describe the use case — what problem it solves and who benefits.
+
+## Submitting Code
+
+1. Fork the repo.
+2. Create a branch from `main` (`git checkout -b fix/your-description`).
+3. Make your changes.
+4. Test them. If you changed the Deck script, test on a Steam Deck. If you changed the PC script, test on Windows.
+5. Open a pull request against `main`. Describe what changed and why.
+
+Keep commits focused. One fix per PR when possible.
+
+### Code style
+
+- Bash: use `set -euo pipefail`, quote variables, use `[[ ]]` over `[ ]`.
+- PowerShell: follow the existing patterns in `install-Phantom Sense-pc.ps1`.
+- No emoji in scripts or docs.
+- Comments should explain *why*, not *what*.
+
+## Documentation
+
+Improvements to the README, troubleshooting, FAQ, or setup instructions are always welcome. Same process — fork, branch, PR.
+
+## Game Compatibility Reports
+
+If you've tested a game that supports DualSense features (adaptive triggers, haptics) through Phantom Sense, open an issue or PR with:
+
+- Game name.
+- Whether adaptive triggers, haptics, gyro, and touchpad worked.
+- Any quirks or required settings.
+
+This will eventually feed into a game compatibility matrix.
+
+## Areas Where Help Is Needed
+
+From the [roadmap](README.md#roadmap):
+
+- Decky Loader plugin for Game Mode integration.
+- Wired vs. Wi-Fi latency benchmarks with proper methodology.
+- Tailscale WAN configuration guide.
+- Game compatibility testing and reports.
+- Video walkthrough or demo.
+
+## Code of Conduct
+
+Be respectful. This is a hobby project built to solve a real problem. Constructive feedback is welcome; hostility is not.
