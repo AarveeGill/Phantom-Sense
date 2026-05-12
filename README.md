@@ -1,7 +1,7 @@
 <div align="center">
 
 # PhantomSense
-
+ 
 **Forward a DualSense from your Steam Deck to your PC over the network.**  
 Adaptive triggers, HD haptics, gyro, and touchpad — all working natively over Moonlight.
 
