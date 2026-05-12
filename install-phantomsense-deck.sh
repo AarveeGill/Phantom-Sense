@@ -1,10 +1,10 @@
-#!/bin/bash
+bash_script = r'''#!/bin/bash
 # ============================================================================
-# PhantomSense Deck Installer v1.1.0
+# PhantomSense Deck Installer v1.2.0
 # https://github.com/AarveeGill/Phantom-Sense
 #
 # One-command installer for Steam Deck (SteamOS)
-# Installs VirtualHere USB Server as a persistent user service
+# Installs VirtualHere USB Server as a persistent system service
 #
 # Usage:
 #   curl -sL https://raw.githubusercontent.com/AarveeGill/Phantom-Sense/main/install-phantomsense-deck.sh | bash
@@ -15,22 +15,30 @@
 #   ./install-phantomsense-deck.sh --uninstall Remove PhantomSense
 #   ./install-phantomsense-deck.sh --help      Show help
 #
-# Why user services?
-#   SteamOS updates wipe /etc/systemd/system/ but NOT ~/.config/systemd/user/
-#   PhantomSense survives every SteamOS update without reinstallation.
+# Why a system service?
+#   VirtualHere needs root access to control USB devices. A system service
+#   runs as root and starts at boot in BOTH Desktop Mode and Game Mode.
+#
+# SteamOS updates:
+#   Updates can wipe /etc/systemd/system/. The binary and a restore script
+#   are saved in /home/deck/phantomsense/ (which survives updates).
+#   After an update, run: sudo ~/phantomsense/restore-service.sh
 # ============================================================================
 
 set -euo pipefail
 
 # ── Configuration ──────────────────────────────────────────────────────────
 
-PHANTOMSENSE_VERSION="1.1.0"
+PHANTOMSENSE_VERSION="1.2.0"
 INSTALL_DIR="$HOME/phantomsense"
 BINARY_NAME="vhusbdx86_64"
 BINARY_URL="https://www.virtualhere.com/sites/default/files/usbserver/vhusbdx86_64"
 SERVICE_NAME="phantomsense"
-SERVICE_DIR="$HOME/.config/systemd/user"
-SERVICE_FILE="$SERVICE_DIR/$SERVICE_NAME.service"
+SYSTEM_SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
+USER_SERVICE_DIR="$HOME/.config/systemd/user"
+USER_SERVICE_FILE="$USER_SERVICE_DIR/$SERVICE_NAME.service"
+RESTORE_SCRIPT="$INSTALL_DIR/restore-service.sh"
+DESKTOP_SHORTCUT="$HOME/Desktop/PhantomSense.desktop"
 
 # ── Colors ─────────────────────────────────────────────────────────────────
 
@@ -75,10 +83,11 @@ show_help() {
     echo ""
     echo "What this script does:"
     echo "  1. Downloads VirtualHere USB Server binary"
-    echo "  2. Creates a systemd user service (survives SteamOS updates)"
-    echo "  3. Enables auto-start at boot (via linger)"
-    echo "  4. Starts the VirtualHere server"
-    echo "  5. Shows your Steam Deck IP for the PC installer"
+    echo "  2. Creates a system service (runs as root for USB access)"
+    echo "  3. Starts at boot in Desktop Mode AND Game Mode"
+    echo "  4. Creates a restore script for SteamOS update recovery"
+    echo "  5. Creates a desktop shortcut"
+    echo "  6. Shows your Steam Deck IP for the PC installer"
     echo ""
     echo "After this script, run install-phantomsense-pc.ps1 on your Windows PC."
     echo ""
@@ -89,8 +98,127 @@ show_help() {
 # ── Get IP addresses ───────────────────────────────────────────────────────
 
 get_deck_ip() {
-    # Get non-loopback IPv4 addresses
     ip -4 addr show scope global 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "unknown"
+}
+
+# ── Request sudo upfront ──────────────────────────────────────────────────
+
+request_sudo() {
+    info "VirtualHere needs root access to control USB devices."
+    info "You will be asked for your password once."
+    echo ""
+    if sudo -v 2>/dev/null; then
+        ok "Sudo access granted"
+        # Keep sudo alive in background
+        ( while true; do sudo -v; sleep 50; done ) &
+        SUDO_KEEPALIVE_PID=$!
+        trap "kill $SUDO_KEEPALIVE_PID 2>/dev/null" EXIT
+    else
+        error "Failed to get sudo access. Please set a password first:"
+        error "  passwd"
+        exit 1
+    fi
+}
+
+# ── Clean up old v1.1.0 user service ──────────────────────────────────────
+
+cleanup_old_user_service() {
+    if [ -f "$USER_SERVICE_FILE" ]; then
+        info "Found old user service from v1.1.0. Cleaning up..."
+        systemctl --user stop "$SERVICE_NAME" 2>/dev/null || true
+        systemctl --user disable "$SERVICE_NAME" 2>/dev/null || true
+        rm -f "$USER_SERVICE_FILE"
+        systemctl --user daemon-reload 2>/dev/null || true
+        ok "Old user service removed"
+    fi
+}
+
+# ── Create restore script ─────────────────────────────────────────────────
+
+create_restore_script() {
+    cat > "$RESTORE_SCRIPT" << 'RESTORE_EOF'
+#!/bin/bash
+# ============================================================================
+# PhantomSense — Restore Service After SteamOS Update
+# https://github.com/AarveeGill/Phantom-Sense
+#
+# SteamOS updates wipe /etc/systemd/system/. Run this to restore:
+#   sudo ~/phantomsense/restore-service.sh
+# ============================================================================
+
+set -euo pipefail
+
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo -e "${RED}[ERROR]${NC} Run with sudo: sudo ~/phantomsense/restore-service.sh"
+    exit 1
+fi
+
+INSTALL_DIR="/home/deck/phantomsense"
+BINARY="$INSTALL_DIR/vhusbdx86_64"
+
+if [ ! -f "$BINARY" ]; then
+    echo -e "${RED}[ERROR]${NC} VirtualHere binary not found at $BINARY"
+    echo -e "${CYAN}[INFO]${NC}  Re-run the full installer:"
+    echo "  curl -sL https://raw.githubusercontent.com/AarveeGill/Phantom-Sense/main/install-phantomsense-deck.sh | bash"
+    exit 1
+fi
+
+cat > /etc/systemd/system/phantomsense.service << EOF
+# PhantomSense — VirtualHere USB Server
+# System service — runs as root for USB access
+# https://github.com/AarveeGill/Phantom-Sense
+
+[Unit]
+Description=PhantomSense - VirtualHere USB Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=$BINARY
+Restart=always
+RestartSec=3
+User=root
+WorkingDirectory=$INSTALL_DIR
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable phantomsense.service
+systemctl start phantomsense.service
+
+echo ""
+echo -e "${GREEN}[OK]${NC}    PhantomSense service restored and running."
+systemctl status phantomsense.service --no-pager
+echo ""
+RESTORE_EOF
+
+    chmod +x "$RESTORE_SCRIPT"
+}
+
+# ── Create desktop shortcut ───────────────────────────────────────────────
+
+create_desktop_shortcut() {
+    mkdir -p "$HOME/Desktop"
+    cat > "$DESKTOP_SHORTCUT" << 'DESKTOP_EOF'
+[Desktop Entry]
+Name=PhantomSense
+Comment=PhantomSense - VirtualHere USB Server Status
+Exec=konsole -e bash -c "echo '' && echo '  PhantomSense - VirtualHere USB Server' && echo '  =====================================' && echo '' && sudo systemctl status phantomsense.service --no-pager && echo '' && echo '  IP Address(es):' && ip -4 addr show scope global 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | while read ip; do echo \"    $ip:7575\"; done && echo '' && echo '  Commands:' && echo '    Restart:  sudo systemctl restart phantomsense' && echo '    Stop:     sudo systemctl stop phantomsense' && echo '    Logs:     journalctl -u phantomsense -f' && echo '' && read -p '  Press Enter to close...'"
+Icon=utilities-terminal
+Type=Application
+Terminal=false
+Categories=Utility;
+DESKTOP_EOF
+
+    chmod +x "$DESKTOP_SHORTCUT"
 }
 
 # ── Status ─────────────────────────────────────────────────────────────────
@@ -106,31 +234,40 @@ show_status() {
         error "VirtualHere binary: not found"
     fi
 
-    # Service file
-    if [ -f "$SERVICE_FILE" ]; then
-        ok "Service file: $SERVICE_FILE"
+    # System service file
+    if [ -f "$SYSTEM_SERVICE_FILE" ]; then
+        ok "Service file: $SYSTEM_SERVICE_FILE"
     else
         error "Service file: not found"
+        warn "If SteamOS was updated, restore with: sudo ~/phantomsense/restore-service.sh"
     fi
 
-    # Linger
-    if loginctl show-user "$(whoami)" 2>/dev/null | grep -q "Linger=yes"; then
-        ok "Linger: enabled (service runs at boot without login)"
+    # Restore script
+    if [ -f "$RESTORE_SCRIPT" ]; then
+        ok "Restore script: $RESTORE_SCRIPT"
     else
-        warn "Linger: not enabled (service starts only after login)"
+        warn "Restore script: not found"
+    fi
+
+    # Desktop shortcut
+    if [ -f "$DESKTOP_SHORTCUT" ]; then
+        ok "Desktop shortcut: $DESKTOP_SHORTCUT"
+    else
+        warn "Desktop shortcut: not found"
     fi
 
     # Service status
     echo ""
-    if systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then
+    if sudo systemctl is-active "$SERVICE_NAME" &>/dev/null; then
         ok "Service: running"
         echo ""
-        systemctl --user status "$SERVICE_NAME" --no-pager 2>/dev/null || true
+        sudo systemctl status "$SERVICE_NAME" --no-pager 2>/dev/null || true
     else
-        if systemctl --user is-enabled "$SERVICE_NAME" &>/dev/null; then
-            warn "Service: enabled but not running"
+        if [ -f "$SYSTEM_SERVICE_FILE" ]; then
+            warn "Service: installed but not running"
+            warn "Try: sudo systemctl start phantomsense"
         else
-            error "Service: not installed or not enabled"
+            error "Service: not installed"
         fi
     fi
 
@@ -142,7 +279,7 @@ show_status() {
     if [ "$ips" != "unknown" ] && [ -n "$ips" ]; then
         info "Steam Deck IP address(es):"
         echo "$ips" | while read -r ip; do
-            echo -e "  ${BOLD}$ip${NC}  (use this in VirtualHere Client on PC as ${ip}:7575)"
+            echo -e "  ${BOLD}$ip${NC}  (VirtualHere Client on PC: ${ip}:7575)"
         done
     else
         warn "Could not detect IP address. Check with: ip addr"
@@ -157,28 +294,42 @@ uninstall() {
     banner
     step "Uninstalling PhantomSense"
 
-    if systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then
+    # Request sudo
+    request_sudo
+
+    # Stop and disable system service
+    if sudo systemctl is-active "$SERVICE_NAME" &>/dev/null; then
         info "Stopping service..."
-        systemctl --user stop "$SERVICE_NAME"
+        sudo systemctl stop "$SERVICE_NAME"
         ok "Service stopped"
     fi
 
-    if systemctl --user is-enabled "$SERVICE_NAME" &>/dev/null; then
+    if sudo systemctl is-enabled "$SERVICE_NAME" &>/dev/null; then
         info "Disabling service..."
-        systemctl --user disable "$SERVICE_NAME"
+        sudo systemctl disable "$SERVICE_NAME"
         ok "Service disabled"
     fi
 
-    if [ -f "$SERVICE_FILE" ]; then
+    if [ -f "$SYSTEM_SERVICE_FILE" ]; then
         info "Removing service file..."
-        rm -f "$SERVICE_FILE"
-        systemctl --user daemon-reload
+        sudo rm -f "$SYSTEM_SERVICE_FILE"
+        sudo systemctl daemon-reload
         ok "Service file removed"
     fi
 
-    if [ -f "$INSTALL_DIR/$BINARY_NAME" ]; then
+    # Clean up old user service too
+    cleanup_old_user_service
+
+    # Remove desktop shortcut
+    if [ -f "$DESKTOP_SHORTCUT" ]; then
+        rm -f "$DESKTOP_SHORTCUT"
+        ok "Desktop shortcut removed"
+    fi
+
+    # Remove binary and install dir
+    if [ -d "$INSTALL_DIR" ]; then
         if [ -t 0 ]; then
-            read -rp "Remove VirtualHere binary and config from $INSTALL_DIR? [y/N] " response
+            read -rp "Remove VirtualHere binary and all files from $INSTALL_DIR? [y/N] " response
             if [[ "$response" =~ ^[Yy]$ ]]; then
                 rm -rf "$INSTALL_DIR"
                 ok "Installation directory removed"
@@ -200,10 +351,11 @@ uninstall() {
 preflight() {
     step "Step 1: Pre-flight Checks"
 
-    # Not root
+    # Running as root check (don't run AS root, but we need sudo)
     if [ "$(id -u)" -eq 0 ]; then
-        error "Do not run this script as root or with sudo."
-        error "PhantomSense uses systemd user services. Run as: ./install-phantomsense-deck.sh"
+        error "Do not run this script as root."
+        error "Run as your normal user: ./install-phantomsense-deck.sh"
+        error "The script will ask for sudo when needed."
         exit 1
     fi
     ok "Running as user: $(whoami)"
@@ -246,13 +398,27 @@ install() {
     banner
     preflight
 
-    # Step 2: Directory
-    step "Step 2: Creating installation directory"
+    # Step 2: Sudo
+    step "Step 2: Requesting sudo access"
+    request_sudo
+
+    # Step 3: Clean up old user service
+    step "Step 3: Checking for previous installation"
+    cleanup_old_user_service
+
+    # Check if system service already running
+    if sudo systemctl is-active "$SERVICE_NAME" &>/dev/null && [ "$force" = false ]; then
+        ok "PhantomSense is already running as a system service"
+        info "Use --force to reinstall, or --status to check details"
+    fi
+
+    # Step 4: Directory
+    step "Step 4: Creating installation directory"
     mkdir -p "$INSTALL_DIR"
     ok "Directory: $INSTALL_DIR"
 
-    # Step 3: Download
-    step "Step 3: Downloading VirtualHere USB Server"
+    # Step 5: Download
+    step "Step 5: Downloading VirtualHere USB Server"
     if [ -f "$INSTALL_DIR/$BINARY_NAME" ] && [ "$force" = false ]; then
         ok "VirtualHere binary already exists (use --force to re-download)"
     else
@@ -268,15 +434,14 @@ install() {
     chmod +x "$INSTALL_DIR/$BINARY_NAME"
     ok "Binary is executable"
 
-    # Step 4: User service
-    step "Step 4: Creating systemd user service"
-    info "User services persist across SteamOS updates"
+    # Step 6: System service
+    step "Step 6: Creating system service (runs as root for USB access)"
+    info "System services start at boot in Desktop Mode AND Game Mode"
 
-    mkdir -p "$SERVICE_DIR"
-
-    cat > "$SERVICE_FILE" << EOF
+    sudo tee "$SYSTEM_SERVICE_FILE" > /dev/null << EOF
 # PhantomSense — VirtualHere USB Server
-# User service — persists across SteamOS updates
+# System service — runs as root for USB access
+# Starts at boot in both Desktop Mode and Game Mode
 # https://github.com/AarveeGill/Phantom-Sense
 
 [Unit]
@@ -289,50 +454,54 @@ Type=simple
 ExecStart=$INSTALL_DIR/$BINARY_NAME
 Restart=always
 RestartSec=3
+User=root
 WorkingDirectory=$INSTALL_DIR
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 EOF
 
-    ok "Service file created: $SERVICE_FILE"
+    ok "Service file created: $SYSTEM_SERVICE_FILE"
 
-    # Step 5: Linger
-    step "Step 5: Enabling linger for auto-start at boot"
-    if loginctl enable-linger "$(whoami)" 2>/dev/null; then
-        ok "Linger enabled for user: $(whoami)"
-    else
-        warn "Could not enable linger. Try: sudo loginctl enable-linger $(whoami)"
-        warn "Without linger, service starts only after login."
-    fi
-
-    # Step 6: Start
-    step "Step 6: Starting PhantomSense"
-
-    systemctl --user is-active "$SERVICE_NAME" &>/dev/null && systemctl --user stop "$SERVICE_NAME"
-
-    systemctl --user daemon-reload
+    sudo systemctl daemon-reload
     ok "Systemd reloaded"
 
-    systemctl --user enable "$SERVICE_NAME"
+    sudo systemctl enable "$SERVICE_NAME"
     ok "Service enabled (starts at boot)"
 
-    systemctl --user start "$SERVICE_NAME"
+    sudo systemctl start "$SERVICE_NAME"
     sleep 2
 
-    # Verify
-    step "Step 7: Verifying installation"
-    if systemctl --user is-active "$SERVICE_NAME" &>/dev/null; then
+    # Step 7: Restore script
+    step "Step 7: Creating SteamOS update recovery script"
+    info "SteamOS updates can wipe /etc/systemd/system/"
+    info "The restore script recreates the service automatically"
+    create_restore_script
+    ok "Restore script saved: $RESTORE_SCRIPT"
+    info "After a SteamOS update, run: sudo ~/phantomsense/restore-service.sh"
+
+    # Step 8: Desktop shortcut
+    step "Step 8: Creating desktop shortcut"
+    create_desktop_shortcut
+    ok "Desktop shortcut created: $DESKTOP_SHORTCUT"
+
+    # Step 9: Verify
+    step "Step 9: Verifying installation"
+    if sudo systemctl is-active "$SERVICE_NAME" &>/dev/null; then
         ok "PhantomSense is running"
+        echo ""
+        sudo systemctl status "$SERVICE_NAME" --no-pager 2>/dev/null || true
     else
-        warn "Service may not have started correctly."
-        warn "VirtualHere may need root access for USB. Try:"
-        warn "  sudo $INSTALL_DIR/$BINARY_NAME"
-        systemctl --user status "$SERVICE_NAME" --no-pager 2>/dev/null || true
+        error "Service failed to start. Checking logs..."
+        echo ""
+        sudo journalctl -u "$SERVICE_NAME" --no-pager -n 10 2>/dev/null || true
+        echo ""
+        error "Try running manually to see the error:"
+        error "  sudo $INSTALL_DIR/$BINARY_NAME"
     fi
 
-    # Get IP
-    step "Step 8: Your Steam Deck's Network Info"
+    # Step 10: Network
+    step "Step 10: Your Steam Deck's Network Info"
     local ips
     ips=$(get_deck_ip)
     if [ "$ips" != "unknown" ] && [ -n "$ips" ]; then
@@ -355,15 +524,21 @@ EOF
     echo -e "  ${GREEN}${BOLD}PhantomSense Deck setup complete${NC}"
     echo ""
     echo "  Installation path:  $INSTALL_DIR"
-    echo "  Service file:       $SERVICE_FILE"
+    echo "  Service file:       $SYSTEM_SERVICE_FILE"
+    echo "  Restore script:     $RESTORE_SCRIPT"
+    echo "  Desktop shortcut:   $DESKTOP_SHORTCUT"
     echo "  VirtualHere port:   7575 (TCP)"
+    echo "  Auto-start:         Yes (Desktop Mode + Game Mode)"
     echo ""
     echo "  Useful commands:"
-    echo "    Check status:     systemctl --user status phantomsense"
-    echo "    View logs:        journalctl --user -u phantomsense -f"
-    echo "    Restart:          systemctl --user restart phantomsense"
-    echo "    Stop:             systemctl --user stop phantomsense"
+    echo "    Check status:     sudo systemctl status phantomsense"
+    echo "    View logs:        sudo journalctl -u phantomsense -f"
+    echo "    Restart:          sudo systemctl restart phantomsense"
+    echo "    Stop:             sudo systemctl stop phantomsense"
     echo "    Uninstall:        ./install-phantomsense-deck.sh --uninstall"
+    echo ""
+    echo "  After SteamOS update:"
+    echo "    sudo ~/phantomsense/restore-service.sh"
     echo ""
     echo "============================================================================"
     echo ""
@@ -373,7 +548,7 @@ EOF
     echo "     https://github.com/AarveeGill/Phantom-Sense"
     echo ""
     echo "  2. Open PowerShell as Administrator on your PC and run:"
-    echo "     .\install-phantomsense-pc.ps1"
+    echo "     .\\install-phantomsense-pc.ps1"
     echo ""
     echo "  3. When prompted for the Steam Deck IP, enter the address shown above."
     echo ""
@@ -401,3 +576,40 @@ main() {
 }
 
 main "$@"
+'''
+
+with open("install-phantomsense-deck.sh", "w", encoding="utf-8", newline="\n") as f:
+    f.write(bash_script)
+
+lines = len(bash_script.splitlines())
+chars = len(bash_script)
+
+print(f"Created: install-phantomsense-deck.sh v1.2.0")
+print(f"Size: {chars:,} chars | {lines} lines")
+print()
+print("=" * 60)
+print()
+print("FIXES from v1.1.0:")
+print()
+print("1. PERMISSION FIX:")
+print("   - Uses SYSTEM service (/etc/systemd/system/) with User=root")
+print("   - Requests sudo upfront, keeps it alive throughout")
+print("   - VirtualHere can now access USB devices properly")
+print()
+print("2. AUTO-START in Desktop Mode AND Game Mode:")
+print("   - System service with WantedBy=multi-user.target")
+print("   - Starts at boot before any user logs in")
+print()
+print("3. DESKTOP SHORTCUT:")
+print("   - Creates ~/Desktop/PhantomSense.desktop")
+print("   - Opens Konsole showing service status + IP + commands")
+print()
+print("4. STEAMOS UPDATE RECOVERY:")
+print("   - Saves ~/phantomsense/restore-service.sh")
+print("   - After SteamOS update: sudo ~/phantomsense/restore-service.sh")
+print("   - Recreates service file, enables, starts — one command")
+print()
+print("5. BACKWARDS COMPATIBLE:")
+print("   - Detects and removes old v1.1.0 user service automatically")
+print("   - Safe to re-run on existing installations")
+
