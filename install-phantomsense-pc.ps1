@@ -5,11 +5,12 @@
 # Automated setup for the Windows PC side of PhantomSense
 # Installs VirtualHere Client, ViGEmBus, HidHide, DSX, and configures Sunshine
 #
-# Usage (Run PowerShell as Administrator):
-#   .\install-phantomsense-pc.ps1             Install everything
-#   .\install-phantomsense-pc.ps1 -Status     Check installation status
-#   .\install-phantomsense-pc.ps1 -Uninstall  Remove PhantomSense components
-#   .\install-phantomsense-pc.ps1 -Help       Show help
+# EASY INSTALL: Double-click install-phantomsense-pc.bat
+# It handles admin elevation and execution policy automatically.
+#
+# MANUAL: Run PowerShell as Administrator:
+#   Set-ExecutionPolicy Bypass -Scope Process -Force
+#   .\install-phantomsense-pc.ps1
 # ============================================================================
 
 param(
@@ -454,7 +455,6 @@ function Start-Install {
 
     switch ($dsxChoice) {
         "1" {
-            # Free version — download from GitHub
             Write-Host ""
             Write-Info "Installing DSX Free (v1.4.9) from GitHub..."
             Write-Info "This version is no longer updated but works perfectly for PhantomSense."
@@ -463,14 +463,12 @@ function Start-Install {
 
             $result = Get-File -Url $DSXFreeURL -Destination $DSXFreeZip -Description "DualSenseX v1.4.9"
             if ($result) {
-                # Extract
                 Write-Info "Extracting DualSenseX..."
                 $dsxInstallDir = "$InstallDir\DualSenseX"
                 New-Item -ItemType Directory -Path $dsxInstallDir -Force | Out-Null
                 Expand-Archive -Path $DSXFreeZip -DestinationPath $dsxInstallDir -Force
                 Write-OK "DualSenseX extracted to: $dsxInstallDir"
 
-                # Find the setup exe
                 $setupExe = Get-ChildItem -Path $dsxInstallDir -Filter "DualSenseX-Setup.exe" -Recurse | Select-Object -First 1
                 if ($setupExe) {
                     Write-Info "Running DualSenseX installer..."
@@ -493,7 +491,6 @@ function Start-Install {
             }
         }
         "2" {
-            # Paid version — open Steam page
             Write-Host ""
             Write-Info "DSX on Steam:"
             Write-Host ""
