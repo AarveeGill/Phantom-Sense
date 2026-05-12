@@ -79,10 +79,6 @@ Your portable companion. Play on the couch, on a TV via HDMI, or in bed. It can 
 </table>
 </div>
 
-<br>
-
-**If this sounds like your setup, keep reading.** You have a powerful PC that does the heavy lifting, and **Moonlight/Sunshine** beaming those games to every room. Maybe you game on the living room TV with a Steam Deck docked via HDMI. Maybe you play handheld on the couch. Maybe both, depending on the day.
-
 Now add a **DualSense** to the mix — Sony's flagship controller with adaptive triggers, HD haptics, gyroscope, and touchpad. You paid a premium for those features. You expect them to work.
 
 **They don't.** When Moonlight streams your game, it converts the DualSense into a generic Xbox 360 gamepad. Every premium feature is silently killed. Your $200 controller feels like a $20 one.
@@ -99,8 +95,6 @@ Now add a **DualSense** to the mix — Sony's flagship controller with adaptive 
 </tr>
 </table>
 </div>
-
-<br>
 
 ### PhantomSense Fixes This
 
